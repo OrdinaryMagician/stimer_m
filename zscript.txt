@@ -1,0 +1,216 @@
+// fancy pretty timer for speedrunners that somehow use GZDoom
+// (C)2018-2019 Marisa Kirisame, UnSX Team
+// Released under the Apache license (see COPYING.txt)
+version "3.7"
+
+// static thinker holding time stats for previous maps
+Class TimeList : Thinker
+{
+	// times in tics
+	Array<int> times;
+	// map names
+	Array<String> maps;
+
+	static TimeList Get()
+	{
+		let t = TimeList(ThinkerIterator.Create("TimeList",STAT_STATIC).Next());
+		if ( !t )
+		{
+			t = new("TimeList");
+			t.ChangeStatNum(STAT_STATIC);
+		}
+		return t;
+	}
+}
+
+// handler that deals with all the stuff(tm)
+Class PreciseTimerHandler : EventHandler
+{
+	// tic counter for the current map
+	int icnt;
+	// instance of saved times
+	TimeList tl;
+	// bool set to prevent the time drawer from "double-printing" the
+	// current map times at map exit
+	bool unloading;
+
+	// map has been entered
+	override void WorldLoaded( WorldEvent e )
+	{
+		// load saved times (created if none)
+		tl = TimeList.Get();
+		// reset the timer on map load but not on reloading a savegame
+		// (who uses savegames in a speedrun anyway?)
+		if ( !e.IsSaveGame ) icnt = 0;
+	}
+
+	// we're leaving
+	override void WorldUnloaded( WorldEvent e )
+	{
+		unloading = true;
+		// record the time for this map
+		tl.times.Push(icnt);
+		tl.maps.Push(level.levelname);
+	}
+
+	// countin' up those tics, yo
+	// since we're using WorldTick the timer will be affected by pausing
+	override void WorldTick()
+	{
+		icnt++;
+	}
+
+	// screen drawing function
+	override void RenderOverlay( RenderEvent e )
+	{
+		// time converted to seconds
+		double time;
+		// total time in seconds accumulated from all maps
+		double ttime = 0;
+		// for pretty-printing
+		int h,m,s,ms;
+		// initial Y position of text
+		int ypos = 4;
+		// calculated "max width" of all timers
+		// in pixels and characters, respectively
+		int maxtw = 0, maxtc = 0;
+		// temporary string var for formatting
+		String tstr;
+		// array containing all map names
+		Array<String> names;
+		// array containing all formatted time
+		Array<String> times;
+		// clear arrays due to ZScript screwery
+		names.Clear();
+		times.Clear();
+		// pile up all the previous map times
+		for ( int i=0; i<tl.times.Size(); i++ )
+		{
+			// convert from tics to seconds
+			time = double(tl.times[i])/Thinker.TICRATE;
+			// add up to total time
+			ttime += time;
+			// separate into hours/minutes/seconds/milliseconds
+			ms = int((time*1000)%1000);
+			h = int(floor(time/3600));
+			m = int(floor(time/60)%60);
+			s = int(floor(time)%60);
+			// push the map name
+			names.Push("\cq"..tl.maps[i].."\c-");
+			// number of characters to subtract from calculated string length
+			// this is used to exclude the length of color escape codes, as they are still
+			// taken into account when using .length()
+			int tmc = 0;
+			// format time, shortened when needed
+			if ( h > 0 )
+			{
+				tstr = String.Format(" \cu%d\cm:\cu%02d\cm:\cu%02d\cm.\cu%03d\c-",h,m,s,ms);
+				tmc = 17;
+			}
+			else if ( m > 0 )
+			{
+				tstr = String.Format(" \cu%d\cm:\cu%02d\cm.\cu%03d\c-",m,s,ms);
+				tmc = 13;
+			}
+			else
+			{
+				tstr = String.Format(" \cu%d\cm.\cu%03d\c-",s,ms);
+				tmc = 9;
+			}
+			// push the formatted time
+			times.Push(tstr);
+			// get the length
+			int tc = tstr.length()-tmc;
+			int tw = ConFont.StringWidth(tstr);
+			if ( tc > maxtc ) maxtc = tc;
+			if ( tw > maxtw ) maxtw = tw;
+		}
+		// current map time is only printed if the map isn't unloading
+		// this is to prevent it to be drawn duplicated since it's just
+		// been pushed into the previous times list at this exact moment
+		if ( !unloading )
+		{
+			// no need for comments here, you all know from the previous block
+			time = (icnt+e.FracTic)/Thinker.TICRATE;
+			ttime += time;
+			ms = int((time*1000)%1000);
+			h = int(floor(time/3600));
+			m = int(floor(time/60)%60);
+			s = int(floor(time)%60);
+			names.Push("\cd"..level.levelname.."\c-");
+			int tmc = 0;
+			if ( h > 0 )
+			{
+				tstr = String.Format(" \cj%d\cu:\cj%02d\cu:\cj%02d\cu.\cj%03d\c-",h,m,s,ms);
+				tmc = 17;
+			}
+			else if ( m > 0 )
+			{
+				tstr = String.Format(" \cj%d\cu:\cj%02d\cu.\cj%03d\c-",m,s,ms);
+				tmc = 13;
+			}
+			else
+			{
+				tstr = String.Format(" \cj%d\cu.\cj%03d\c-",s,ms);
+				tmc = 9;
+			}
+			times.Push(tstr);
+			int tc = tstr.length()-tmc;
+			int tw = ConFont.StringWidth(tstr);
+			if ( tc > maxtc ) maxtc = tc;
+			if ( tw > maxtw ) maxtw = tw;
+		}
+		// total time is only printed if there's more than one previous time
+		// (otherwise it would be redundant)
+		if ( time != ttime )
+		{
+			ms = int((ttime*1000)%1000);
+			h = int(floor(ttime/3600));
+			m = int(floor(ttime/60)%60);
+			s = int(floor(ttime)%60);
+			int tmc = 0;
+			if ( h > 0 )
+			{
+				tstr = String.Format(" \cj%d\cu:\cj%02d\cu:\cj%02d\cu.\cj%03d\c-",h,m,s,ms);
+				tmc = 17;
+			}
+			else if ( m > 0 )
+			{
+				tstr = String.Format(" \cj%d\cu:\cj%02d\cu.\cj%03d\c-",m,s,ms);
+				tmc = 13;
+			}
+			else
+			{
+				tstr = String.Format(" \cj%d\cu.\cj%03d\c-",s,ms);
+				tmc = 9;
+			}
+			int tc = tstr.length()-tmc;
+			int tw = ConFont.StringWidth(tstr);
+			if ( tc > maxtc ) maxtc = tc;
+			if ( tw > maxtw ) maxtw = tw;
+			// a nice line separating this from the other timers
+			// it's as wide as the widest timer (including total)
+			String lstr = "\cu";
+			// I swear this is the only way to do this in ZScript
+			for ( int i=0; i<maxtc; i++ ) lstr = lstr.."-";
+			lstr = lstr.."\c-";
+			// the line separator has no name accompanying it
+			names.Push("");
+			times.Push(lstr);
+			// the name of this timer, obviously
+			names.Push("\cdTotal Time\c-");
+			times.Push(tstr);
+		}
+		// go through all the lines and draw them
+		for ( int i=0; i<names.Size(); i++ )
+		{
+			// draw the right-aligned name of the timer (if any)
+			if ( names[i].length() > 0 )
+				Screen.DrawText(SmallFont,Font.CR_UNTRANSLATED,Screen.GetWidth()-(SmallFont.StringWidth(names[i])+maxtw+4)*CleanXFac,ypos,names[i],DTA_CleanNoMove,true);
+			// draw the timer
+			Screen.DrawText(ConFont,Font.CR_UNTRANSLATED,Screen.GetWidth()-(ConFont.StringWidth(times[i])+4)*CleanXFac,ypos-CleanYFac,times[i],DTA_CleanNoMove,true);
+			// move down
+			ypos += SmallFont.GetHeight()*CleanYFac;
+		}
+	}
+}
