@@ -37,32 +37,44 @@ Class PreciseTimerHandler : EventHandler
 	// map has been entered
 	override void WorldLoaded( WorldEvent e )
 	{
+		if ( gamestate != GS_LEVEL ) return;
+		unloading = false;
 		// load saved times (created if none)
 		tl = TimeList.Get();
-		// reset the timer on map load but not on reloading a savegame
-		// (who uses savegames in a speedrun anyway?)
+		// reset the timer on map load
 		if ( !e.IsSaveGame ) icnt = 0;
+	}
+
+	static clearscope string TrimmedLevelName( String lname )
+	{
+		int part = lname.RightIndexOf(" - ");	// for level names that add their author (very common in community packs)
+		if ( part > 0 ) return lname.Left(part);
+		return lname;
 	}
 
 	// we're leaving
 	override void WorldUnloaded( WorldEvent e )
 	{
+		if ( gamestate != GS_LEVEL ) return;
 		unloading = true;
 		// record the time for this map
+		if ( e.IsSaveGame ) return;
 		tl.times.Push(icnt);
-		tl.maps.Push(level.levelname);
+		tl.maps.Push(TrimmedLevelName(level.levelname));
 	}
 
 	// countin' up those tics, yo
 	// since we're using WorldTick the timer will be affected by pausing
 	override void WorldTick()
 	{
+		if ( gamestate != GS_LEVEL ) return;
 		icnt++;
 	}
 
 	// screen drawing function
 	override void RenderOverlay( RenderEvent e )
 	{
+		if ( gamestate != GS_LEVEL ) return;
 		// time converted to seconds
 		double time;
 		// total time in seconds accumulated from all maps
@@ -137,7 +149,7 @@ Class PreciseTimerHandler : EventHandler
 			h = int(floor(time/3600));
 			m = int(floor(time/60)%60);
 			s = int(floor(time)%60);
-			names.Push("\cd"..level.levelname.."\c-");
+			names.Push("\cd"..TrimmedLevelName(level.levelname).."\c-");
 			int tmc = 0;
 			if ( h > 0 )
 			{
